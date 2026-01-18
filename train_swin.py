@@ -17,6 +17,7 @@ from utilss.write_csv import write_results_to_csv
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR
+torch.set_float32_matmul_precision("high")
 
 # Helper function to print memory usage
 def print_memory_usage():
@@ -53,7 +54,7 @@ def find_latest_checkpoint(checkpoint_dir):
 def train_model(model, checkpoint_path, dataloader_train, dataloader_test, criterion, optimizer, num_epochs, results_file_path, scheduler):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    print(device)
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs")
         model = nn.DataParallel(model)
@@ -65,37 +66,33 @@ def train_model(model, checkpoint_path, dataloader_train, dataloader_test, crite
     if latest_checkpoint:
         print(f"The latest checkpoint file is: {latest_checkpoint}")
         latest_checkpoint = os.path.join(checkpoint_path, latest_checkpoint)
-        checkpoint = torch.load(latest_checkpoint)
+        checkpoint = torch.load(latest_checkpoint, map_location=device)
         state_dict = checkpoint['model_state_dict']
 
         new_state_dict = OrderedDict()
+        is_multi_gpu = torch.cuda.device_count() > 1
         for k, v in state_dict.items():
             new_key = k
-            if torch.cuda.device_count() > 1 and not k.startswith('module.'):
+            if is_multi_gpu and not k.startswith('module.'):
                 new_key = 'module.' + k
             new_state_dict[new_key] = v
 
         model.load_state_dict(new_state_dict)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch']
-        loss = checkpoint['epoch_loss']
-        accuracy = checkpoint['epoch_accuracy']
 
     tracemalloc.start()
-
-    epoch_progress = tqdm(range(start_epoch, num_epochs), desc='Training Progress', total=num_epochs - start_epoch)
 
     # Write header to CSV file
     write_results_to_csv(results_file_path, None, None, None, None, None, header=True)
 
-    for epoch in epoch_progress:
+    for epoch in range(start_epoch, num_epochs):
         model.train()
         running_loss, running_accuracy, total = 0.0, 0, 0
 
-        progress_bar = tqdm(enumerate(dataloader_train), total=len(dataloader_train), desc=f"Epoch {epoch+1}/{num_epochs}")
+        progress_bar = tqdm(dataloader_train, desc=f"Epoch {epoch+1}/{num_epochs}")
 
-        epoch_start_time = time.time()
-        for i, (inputs, labels) in progress_bar:
+        for inputs, labels in progress_bar:
             inputs, labels = inputs.to(device), labels.to(device)
 
             optimizer.zero_grad()
@@ -106,27 +103,19 @@ def train_model(model, checkpoint_path, dataloader_train, dataloader_test, crite
 
             total += labels.size(0)
             running_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            running_accuracy += (predicted == labels).sum().item()
+            running_accuracy += (torch.argmax(outputs, dim=1) == labels).sum().item()
 
-            del inputs, labels, outputs, loss, predicted
-            torch.cuda.empty_cache()
-
-        epoch_end_time = time.time()
+            progress_bar.set_postfix({'loss': running_loss / total, 'acc': 100 * running_accuracy / total})
 
         epoch_loss = running_loss / total
         epoch_accuracy = 100 * running_accuracy / total
-        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss}, Accuracy: {epoch_accuracy}%')
+        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.2f}%')
 
         epoch_test_loss, epoch_test_accuracy = evaluate_model(epoch, model, dataloader_test, criterion, device, epoch_loss, epoch_accuracy)
 
         write_results_to_csv(results_file_path, epoch + 1, epoch_loss, epoch_accuracy, epoch_test_loss, epoch_test_accuracy)
 
-        print_memory_usage()
-
         save_model(epoch, model, optimizer, epoch_loss, epoch_accuracy, checkpoint_path)
-
-        print(torch.cuda.memory_summary())
 
         scheduler.step()
 
@@ -203,7 +192,7 @@ if __name__ == "__main__":
     optimizer = AdamW(param_groups, weight_decay=0.02)
     scheduler = CosineAnnealingLR(optimizer, T_max=30)
 
-    num_workers = 14
+    num_workers = 8
 
     print(f"Testing with {num_workers} workers...")
     dataloader_train, dataloader_test = prepare_data(input_type, video_labels_train, video_labels_test, window_size, overlap_size, batch_size, model, num_workers=num_workers)

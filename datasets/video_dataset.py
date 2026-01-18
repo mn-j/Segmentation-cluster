@@ -45,6 +45,11 @@ class VideoDataset_sliding(Dataset):
                     pickle.dump(self.samples, f)  # Save the computed samples to the cache file
 
 
+            # # Otherwise, compute the samples and save them
+            # self.compute_samples()
+            # with open(self.cache_file_train_chansey, 'wb') as f:
+            #     pickle.dump(self.samples, f)  # Save the computed samples to the cache file
+
         if status=='test':         
 
             # Attempt to load precomputed samples from cache
@@ -54,17 +59,26 @@ class VideoDataset_sliding(Dataset):
                     self.samples = pickle.load(f)
             else:
                 # Otherwise, compute the samples and save them
+                os.makedirs(os.path.dirname(self.cache_file_test_chansey), exist_ok=True) # newly added
                 self.compute_samples()
                 with open(self.cache_file_test_chansey, 'wb') as f:
-                    pickle.dump(self.samples, f)  # Save the computed samples to the cache file
+                    pickle.dump(self.samples, f)
+
+
+                # # Otherwise, compute the samples and save them
+                # # os.makedirs(os.path.dirname(self.cache_file_test_chansey), exist_ok=True) # newly added
+                # self.compute_samples()
+                # with open(self.cache_file_test_chansey, 'wb') as f:
+                #     pickle.dump(self.samples, f)
                         
 
                         
                         
 
-    def compute_samples(self):
+    def compute_samples(self): #takes 18 + 7 minutes
         for (path, label) in tqdm(self.video_labels):
             frame_count = self.__frame_counter__(path)
+            print(frame_count)
             fps = 25
 
             # Calculate the number of frames to skip at the start and end
@@ -80,7 +94,29 @@ class VideoDataset_sliding(Dataset):
                 for start_frame in range(skip_frames, frame_count - frames_per_window - skip_frames + 1, step_size):
                     self.samples.append((path, start_frame, label))  # Append the video path, the start frame, and the label
 
-                                                    
+
+    # def compute_samples(self):
+    #     fps = 25
+    #     skip_frames = int(1 * fps)
+    #     frames_per_window = int(fps * self.window_duration)
+    #     overlap_frames = int(fps * self.overlap_duration)
+    #     step_size = frames_per_window - overlap_frames
+        
+    #     for (path, label) in tqdm(self.video_labels):
+    #         try:
+    #             # Use imageio for faster frame counting
+    #             video = imageio.get_reader(path)
+    #             frame_count = len(video)
+    #             video.close()
+    #         except Exception as e:
+    #             print(f"Error reading {path}: {e}")
+    #             continue
+            
+    #         # Compute all valid windows for this video
+    #         if frame_count >= (frames_per_window + 2 * skip_frames):
+    #             for start_frame in range(skip_frames, frame_count - frames_per_window - skip_frames + 1, step_size):
+    #                 self.samples.append((path, start_frame, label))
+
     def __frame_counter__(self, path):
                                          
        cap = cv2.VideoCapture(path)

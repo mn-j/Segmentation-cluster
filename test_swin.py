@@ -17,7 +17,7 @@ from torch.optim import AdamW
 
 class TestMultiple():
     def __init__(self, num_classes, checkpoint_path, window_size):
-        self.class_dict = {0: 'Non-task', 1: 'FT', 2: 'HM', 3: 'PS', 4: 'TT', 5: 'LA'}
+        self.class_dict = {0: 'Non-task', 2: 'FT', 3: 'HM', 4: 'PS'}
         
         model = swin3d_b_finetune(num_classes)
 
@@ -106,7 +106,7 @@ class TestMultiple():
         output_writer.write(resized_frame)
 
     def test(self):
-        csv_file_path = r'/data/diag/tahereh/new/src/datasets/dataset_preprocessing/video_labels_diag_train_sorted_2-6.csv'
+        csv_file_path = r'test.csv'
         videos = self.load_from_csv1(csv_file_path)
         random.shuffle(videos)
 
@@ -116,15 +116,19 @@ class TestMultiple():
         for vid in videos:
             counter = counter + 1
             str_labels = vid[1]
+            
+            print("type:", type(str_labels))
+            print("repr:", repr(str_labels))
+
             int_labels = ast.literal_eval(str_labels)
             cap = cv2.VideoCapture(vid[0])
-            print(vid[0])
+            # print(vid[0])
             window_size = int(25 * self.window_size)  
             original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             new_size = (original_width // 4, original_height // 4)
             fps = int(cap.get(cv2.CAP_PROP_FPS))
-            output_path = os.path.join(r'/data/diag/tahereh/new/src/results', f"segmented_video_{os.path.basename(vid[0]).split('.')[0]}_{vid[0].split('/')[-2]}.mp4")
+            output_path = os.path.join('/data/diag/mohamadaljalab/SegmentationResults', f"segmented_video_{os.path.basename(vid[0]).split('.')[0]}_{vid[0].split('\\')[-2]}.mp4")
             out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, new_size)
             frames = []
             counter = 0
@@ -154,7 +158,7 @@ class TestMultiple():
             out.release()
             print(f"Saved segmented video to {output_path}")
 
-            self.print_memory_usage()
+            # self.print_memory_usage()
 
         snapshot = tracemalloc.take_snapshot()  # Take a snapshot of memory usage
         top_stats = snapshot.statistics('lineno')
@@ -165,9 +169,9 @@ class TestMultiple():
 
 if __name__ == "__main__":
 
-    num_classes = 6
+    num_classes = 5
     window_size = 2
-    checkpoint_path = '/data/diag/tahereh/new/src/checkpoint/swin/cropped/checkpoint_epoch_18.pth'
+    checkpoint_path = '/data/diag/mohamadaljalab/checkpoint/swin/checkpoint_epoch_1.pth'
     
     test = TestMultiple(num_classes, checkpoint_path, window_size)
     test.test()
